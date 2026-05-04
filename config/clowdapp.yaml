@@ -10,6 +10,7 @@ objects:
       name: hcc-ai-assistant
     spec:
       envName: ${ENV_NAME}
+      optionalDependencies: ${{OPTIONAL_DEPENDENCIES}}
       database:
         name: hcc-ai-assistant
       featureFlags: true
@@ -93,6 +94,12 @@ objects:
             value: ${VERTEX_SECRET_PATH}
           - name: CLOWDER_ENABLED
             value: ${CLOWDER_ENABLED}
+          - name: CLOWDER_MCP_SERVER_CONFIGS
+            valueFrom:
+              configMapKeyRef:
+                key: clowder_mcp_server_configs.json
+                name: ${CLOWDER_MCP_SERVER_CONFIGS_NAME}
+                optional: true
           - name: EMBEDDING_SERVICE_PORT
             value: "8002"
           - name: MCP_DISCOVERY_SERVICE_PORT
@@ -130,3 +137,9 @@ parameters:
 - description: ClowdEnv Name
   name: ENV_NAME
   required: true
+- description: Clowder optional dependencies (JSON array of app names)
+  name: OPTIONAL_DEPENDENCIES
+  value: '["notifications-mcp"]'
+- description: ConfigMap name for MCP server to Clowder endpoint mapping
+  name: CLOWDER_MCP_SERVER_CONFIGS_NAME
+  value: clowder-mcp-server-configs
