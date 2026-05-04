@@ -35,7 +35,7 @@ async def liveness(request: Request) -> Response:
 async def readiness(request: Request) -> Response:
     client = request.app.state.client
     try:
-        resp = await client.get(f"{BACKEND_URL}/health", timeout=5.0)
+        resp = await client.get(f"{BACKEND_URL}/readiness", timeout=5.0)
         if resp.status_code == 200:
             return Response("OK", status_code=200)
     except httpx.ConnectError:
