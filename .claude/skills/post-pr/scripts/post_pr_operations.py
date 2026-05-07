@@ -254,12 +254,54 @@ class PostPROperations:
             if not self.jira_token:
                 raise ValueError("JIRA token not configured (set POST_PR_JIRA_TOKEN)")
 
-            # Stub: In real implementation, call JIRA REST API
-            # POST /rest/api/2/issue/{ticket_id}/transitions
+            headers = {
+                "Authorization": f"Bearer {self.jira_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+
             if self.dry_run:
                 logger.info(f"[DRY RUN] Would transition {ticket_id} to {target_status}")
             else:
-                logger.info(f"Transitioned {ticket_id} to {target_status}")
+                with httpx.Client() as client:
+                    # Get available transitions
+                    get_response = client.get(
+                        f"{self.jira_url}/rest/api/2/issue/{ticket_id}/transitions",
+                        headers=headers,
+                        timeout=30.0,
+                    )
+                    get_response.raise_for_status()
+                    transitions = get_response.json().get("transitions", [])
+
+                    # Find the transition ID for the target status
+                    transition_id = None
+                    for transition in transitions:
+                        if transition.get("to", {}).get("name") == target_status:
+                            transition_id = transition.get("id")
+                            break
+
+                    if not transition_id:
+                        # If exact match not found, try case-insensitive match
+                        for transition in transitions:
+                            if transition.get("to", {}).get("name", "").lower() == target_status.lower():
+                                transition_id = transition.get("id")
+                                break
+
+                    if not transition_id:
+                        available = [t.get("to", {}).get("name") for t in transitions]
+                        raise ValueError(
+                            f"Cannot transition to '{target_status}'. Available transitions: {', '.join(available)}"
+                        )
+
+                    # Execute the transition
+                    post_response = client.post(
+                        f"{self.jira_url}/rest/api/2/issue/{ticket_id}/transitions",
+                        headers=headers,
+                        json={"transition": {"id": transition_id}},
+                        timeout=30.0,
+                    )
+                    post_response.raise_for_status()
+                    logger.info(f"Transitioned {ticket_id} to {target_status}")
 
             return OperationResult(
                 operation="jira_transition_issue",
@@ -291,12 +333,24 @@ class PostPROperations:
 
             comment = f"Pull Request created: {pr_url}\n\nSummary: {summary}"
 
-            # Stub: In real implementation, call JIRA REST API
-            # POST /rest/api/2/issue/{ticket_id}/comment
+            headers = {
+                "Authorization": f"Bearer {self.jira_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+
             if self.dry_run:
                 logger.info(f"[DRY RUN] Would add comment to {ticket_id}: {comment}")
             else:
-                logger.info(f"Added comment to {ticket_id}")
+                with httpx.Client() as client:
+                    response = client.post(
+                        f"{self.jira_url}/rest/api/2/issue/{ticket_id}/comment",
+                        headers=headers,
+                        json={"body": comment},
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    logger.info(f"Added comment to {ticket_id}")
 
             return OperationResult(
                 operation="jira_add_comment",

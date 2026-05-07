@@ -38,24 +38,38 @@ def env_vars(temp_dir):
 
 @pytest.fixture
 def mock_github_api():
-    """Mock GitHub API responses."""
+    """Mock GitHub and JIRA API responses."""
     with patch("scripts.post_pr_operations.httpx.Client") as mock_client_class:
         mock_client = Mock()
         mock_client_class.return_value.__enter__.return_value = mock_client
 
-        # Mock successful responses
+        # Mock GitHub responses
         mock_post_response = Mock()
         mock_post_response.raise_for_status = Mock()
 
         mock_get_response = Mock()
         mock_get_response.raise_for_status = Mock()
-        mock_get_response.json.return_value = {"body": "Existing PR description"}
+
+        # Will be called for both GitHub PR GET and JIRA transitions GET
+        def get_side_effect(url, **kwargs):
+            response = Mock()
+            response.raise_for_status = Mock()
+            if "github.com" in url:
+                response.json.return_value = {"body": "Existing PR description"}
+            elif "transitions" in url:
+                # JIRA transitions response
+                response.json.return_value = {
+                    "transitions": [
+                        {"id": "21", "to": {"name": "Code Review"}},
+                    ]
+                }
+            return response
 
         mock_patch_response = Mock()
         mock_patch_response.raise_for_status = Mock()
 
         mock_client.post.return_value = mock_post_response
-        mock_client.get.return_value = mock_get_response
+        mock_client.get.side_effect = get_side_effect
         mock_client.patch.return_value = mock_patch_response
 
         yield mock_client

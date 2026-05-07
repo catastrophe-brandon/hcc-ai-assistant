@@ -79,10 +79,26 @@ class TestTaskUpdate:
         assert result.details["reviewers_requested"] == ["user1", "user2"]
         assert "code-review" in result.details["labels_added"]
 
-        # Verify API calls were made
-        assert mock_client.post.call_count == 2  # labels + reviewers
-        assert mock_client.get.call_count == 1  # get PR
-        assert mock_client.patch.call_count == 1  # update PR
+        # Verify labels API call
+        labels_call = mock_client.post.call_args_list[0]
+        assert labels_call[0][0] == "https://api.github.com/repos/RedHatInsights/hcc-ai-assistant/issues/123/labels"
+        assert labels_call[1]["json"]["labels"] == ["code-review", "awaiting-review"]
+        assert "token test-github-token" in labels_call[1]["headers"]["Authorization"]
+
+        # Verify GET PR call
+        get_call = mock_client.get.call_args
+        assert get_call[0][0] == "https://api.github.com/repos/RedHatInsights/hcc-ai-assistant/pulls/123"
+
+        # Verify PATCH PR description call
+        patch_call = mock_client.patch.call_args
+        assert patch_call[0][0] == "https://api.github.com/repos/RedHatInsights/hcc-ai-assistant/pulls/123"
+        assert "TICKET-456" in patch_call[1]["json"]["body"]
+        assert "https://test-jira.example.com/browse/TICKET-456" in patch_call[1]["json"]["body"]
+
+        # Verify reviewers API call
+        reviewers_call = mock_client.post.call_args_list[1]
+        assert reviewers_call[0][0] == "https://api.github.com/repos/RedHatInsights/hcc-ai-assistant/pulls/123/requested_reviewers"
+        assert reviewers_call[1]["json"]["reviewers"] == ["user1", "user2"]
 
     def test_task_update_dry_run(self, temp_dir):
         """Test GitHub PR update in dry-run mode."""
@@ -157,8 +173,31 @@ class TestTaskUpdate:
 class TestJiraTransitionIssue:
     """Test jira_transition_issue operation."""
 
-    def test_jira_transition_success(self, operations):
+    @patch("scripts.post_pr_operations.httpx.Client")
+    def test_jira_transition_success(self, mock_client_class, operations):
         """Test successful JIRA transition."""
+        # Mock HTTP responses
+        mock_client = Mock()
+        mock_client_class.return_value.__enter__.return_value = mock_client
+
+        # Mock GET transitions response
+        mock_get_response = Mock()
+        mock_get_response.raise_for_status = Mock()
+        mock_get_response.json.return_value = {
+            "transitions": [
+                {"id": "11", "to": {"name": "In Progress"}},
+                {"id": "21", "to": {"name": "Code Review"}},
+                {"id": "31", "to": {"name": "Done"}},
+            ]
+        }
+
+        # Mock POST transition response
+        mock_post_response = Mock()
+        mock_post_response.raise_for_status = Mock()
+
+        mock_client.get.return_value = mock_get_response
+        mock_client.post.return_value = mock_post_response
+
         result = operations.jira_transition_issue(ticket_id="TICKET-123", target_status="Code Review")
 
         assert result.status == OperationStatus.SUCCESS
@@ -166,6 +205,29 @@ class TestJiraTransitionIssue:
         assert "TICKET-123" in result.message
         assert result.details["status"] == "Code Review"
         assert "jira_url" in result.details
+
+        # Verify GET request to fetch available transitions
+        mock_client.get.assert_called_once_with(
+            "https://test-jira.example.com/rest/api/2/issue/TICKET-123/transitions",
+            headers={
+                "Authorization": "Bearer test-jira-token",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+        )
+
+        # Verify POST request to execute the transition with correct transition ID
+        mock_client.post.assert_called_once_with(
+            "https://test-jira.example.com/rest/api/2/issue/TICKET-123/transitions",
+            headers={
+                "Authorization": "Bearer test-jira-token",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            json={"transition": {"id": "21"}},  # ID for "Code Review"
+            timeout=30.0,
+        )
 
     def test_jira_transition_no_token(self, temp_dir, monkeypatch):
         """Test JIRA transition fails without token."""
@@ -177,19 +239,80 @@ class TestJiraTransitionIssue:
         assert result.status == OperationStatus.FAILED
         assert "JIRA token not configured" in result.message
 
-    def test_jira_transition_custom_status(self, operations):
+    @patch("scripts.post_pr_operations.httpx.Client")
+    def test_jira_transition_invalid_status(self, mock_client_class, operations):
+        """Test JIRA transition fails when target status doesn't exist."""
+        # Mock HTTP responses
+        mock_client = Mock()
+        mock_client_class.return_value.__enter__.return_value = mock_client
+
+        mock_get_response = Mock()
+        mock_get_response.raise_for_status = Mock()
+        mock_get_response.json.return_value = {
+            "transitions": [
+                {"id": "11", "to": {"name": "In Progress"}},
+                {"id": "21", "to": {"name": "Code Review"}},
+            ]
+        }
+
+        mock_client.get.return_value = mock_get_response
+
+        result = operations.jira_transition_issue(ticket_id="TICKET-999", target_status="Nonexistent Status")
+
+        assert result.status == OperationStatus.FAILED
+        assert "Cannot transition to 'Nonexistent Status'" in result.message
+        assert "Available transitions:" in result.message
+        # Verify POST was never called since transition wasn't found
+        mock_client.post.assert_not_called()
+
+    @patch("scripts.post_pr_operations.httpx.Client")
+    def test_jira_transition_custom_status(self, mock_client_class, operations):
         """Test JIRA transition to custom status."""
+        # Mock HTTP responses
+        mock_client = Mock()
+        mock_client_class.return_value.__enter__.return_value = mock_client
+
+        mock_get_response = Mock()
+        mock_get_response.raise_for_status = Mock()
+        mock_get_response.json.return_value = {
+            "transitions": [
+                {"id": "11", "to": {"name": "In Progress"}},
+                {"id": "21", "to": {"name": "Code Review"}},
+            ]
+        }
+
+        mock_post_response = Mock()
+        mock_post_response.raise_for_status = Mock()
+
+        mock_client.get.return_value = mock_get_response
+        mock_client.post.return_value = mock_post_response
+
         result = operations.jira_transition_issue(ticket_id="TICKET-789", target_status="In Progress")
 
         assert result.status == OperationStatus.SUCCESS
         assert result.details["status"] == "In Progress"
 
+        # Verify correct transition ID was used for "In Progress"
+        mock_client.post.assert_called_once()
+        call_args = mock_client.post.call_args
+        assert call_args[1]["json"]["transition"]["id"] == "11"
+
 
 class TestJiraAddComment:
     """Test jira_add_comment operation."""
 
-    def test_jira_add_comment_success(self, operations):
+    @patch("scripts.post_pr_operations.httpx.Client")
+    def test_jira_add_comment_success(self, mock_client_class, operations):
         """Test successful JIRA comment."""
+        # Mock HTTP responses
+        mock_client = Mock()
+        mock_client_class.return_value.__enter__.return_value = mock_client
+
+        mock_post_response = Mock()
+        mock_post_response.raise_for_status = Mock()
+
+        mock_client.post.return_value = mock_post_response
+
         result = operations.jira_add_comment(
             ticket_id="TICKET-123", pr_url="https://github.com/test/repo/pull/1", summary="Test PR summary"
         )
@@ -199,6 +322,19 @@ class TestJiraAddComment:
         assert "TICKET-123" in result.message
         assert "Test PR summary" in result.details["comment"]
         assert "https://github.com/test/repo/pull/1" in result.details["comment"]
+
+        # Verify POST request with correct comment body
+        expected_comment = "Pull Request created: https://github.com/test/repo/pull/1\n\nSummary: Test PR summary"
+        mock_client.post.assert_called_once_with(
+            "https://test-jira.example.com/rest/api/2/issue/TICKET-123/comment",
+            headers={
+                "Authorization": "Bearer test-jira-token",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            json={"body": expected_comment},
+            timeout=30.0,
+        )
 
     def test_jira_add_comment_no_token(self, temp_dir, monkeypatch):
         """Test JIRA comment fails without token."""
