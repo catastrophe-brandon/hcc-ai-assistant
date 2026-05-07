@@ -257,17 +257,19 @@ spec:
         #     name: workdir
         - name: test-post-pr-skill
           image: registry.access.redhat.com/ubi9/python-312:latest
-          workingDir: /var/workdir/source/.claude/skills/post-pr
+          workingDir: /var/workdir
           script: |
             #!/bin/bash
             set -e
             echo "Running post-pr skill tests (35 tests)..."
-            # Install uv for dependency management
+            # Copy skill to writable workspace
+            cp -r /var/workdir/source/.claude/skills/post-pr /var/workdir/post-pr-test
+            cd /var/workdir/post-pr-test
+            # Install dependencies with uv
             pip install --quiet uv
-            # Install dependencies into system Python (read-only source tree)
-            uv pip install --system -r pyproject.toml --all-extras
-            # Run tests directly with pytest
-            pytest -v || {
+            uv sync --frozen
+            # Run tests
+            uv run pytest -v || {
               echo "Post-PR skill tests failed!"
               exit 1
             }
