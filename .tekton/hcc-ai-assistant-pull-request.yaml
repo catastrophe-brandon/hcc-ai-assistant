@@ -262,7 +262,7 @@ spec:
             #!/bin/bash
             set -e
             echo "Running post-pr skill tests (35 tests)..."
-            pip install --quiet -e ".[dev]"
+            pip install --quiet ".[dev]"
             pytest -v || {
               echo "Post-PR skill tests failed!"
               exit 1
