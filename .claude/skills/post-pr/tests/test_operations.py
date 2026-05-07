@@ -1,10 +1,9 @@
 """Unit tests for post-PR operations."""
 
 import json
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -13,7 +12,6 @@ from scripts.post_pr_operations import (
     OperationStatus,
     PostPROperations,
     WorkflowResult,
-    execute_post_pr_workflow,
 )
 
 
