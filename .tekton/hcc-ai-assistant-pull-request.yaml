@@ -231,11 +231,10 @@ spec:
             # Copy service to writable workspace
             cp -r /var/workdir/source/embedding-service /var/workdir/embedding-service-test
             cd /var/workdir/embedding-service-test
-            # Install dependencies with uv (including dev extras for pytest)
-            pip install --quiet uv
-            uv sync --frozen --all-extras
+            # Use pip for heavy dependencies (torch, etc) to avoid memory issues
+            pip install --quiet ".[dev]"
             # Run tests
-            uv run pytest -v || {
+            pytest -v || {
               echo "Embedding service tests failed!"
               exit 1
             }
@@ -253,11 +252,10 @@ spec:
             # Copy service to writable workspace
             cp -r /var/workdir/source/mcp-discovery-service /var/workdir/mcp-discovery-service-test
             cd /var/workdir/mcp-discovery-service-test
-            # Install dependencies with uv (including dev extras for pytest)
-            pip install --quiet uv
-            uv sync --frozen --all-extras
+            # Use pip for consistency with other services
+            pip install --quiet ".[dev]"
             # Run tests
-            uv run pytest -v || {
+            pytest -v || {
               echo "MCP discovery service tests failed!"
               exit 1
             }
