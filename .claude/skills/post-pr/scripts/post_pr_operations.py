@@ -203,8 +203,8 @@ class PostPROperations:
                         patch_response.raise_for_status()
                         logger.info(f"Updated PR description with JIRA link: {jira_link}")
                     else:
-                        logger.info(f"JIRA link already exists in PR description")
-            updates.append(f"Added JIRA link to description")
+                        logger.info("JIRA link already exists in PR description")
+            updates.append("Added JIRA link to description")
 
             # 3. Request reviewers
             if reviewers:
@@ -687,7 +687,7 @@ def main():
         print(f"PR: {result.pr_url} (#{result.pr_number})")
         print(f"Ticket: {result.ticket_id}")
         print(f"Timestamp: {result.timestamp}")
-        print(f"\nOperations:")
+        print("\nOperations:")
         for op in result.operations:
             status_icon = "✓" if op.status == OperationStatus.SUCCESS else "✗" if op.status == OperationStatus.FAILED else "-"
             print(f"  {status_icon} {op.operation}: {op.message}")
