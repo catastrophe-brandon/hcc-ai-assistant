@@ -352,8 +352,18 @@ class TestJiraAddComment:
 class TestSlackNotify:
     """Test slack_notify operation."""
 
-    def test_slack_notify_success(self, operations):
+    @patch("scripts.post_pr_operations.httpx.Client")
+    def test_slack_notify_success(self, mock_client_class, operations):
         """Test successful Slack notification."""
+        # Mock HTTP responses
+        mock_client = Mock()
+        mock_client_class.return_value.__enter__.return_value = mock_client
+
+        mock_post_response = Mock()
+        mock_post_response.raise_for_status = Mock()
+
+        mock_client.post.return_value = mock_post_response
+
         result = operations.slack_notify(
             pr_url="https://github.com/test/repo/pull/1", pr_number=1, summary="Test PR", channel="#test-channel"
         )
@@ -362,6 +372,37 @@ class TestSlackNotify:
         assert result.operation == "slack_notify"
         assert "#test-channel" in result.message
         assert result.details["channel"] == "#test-channel"
+
+        # Verify Slack webhook POST call
+        mock_client.post.assert_called_once()
+        call_args = mock_client.post.call_args
+
+        # Verify webhook URL
+        assert call_args[0][0] == "https://hooks.slack.com/test"
+
+        # Verify timeout
+        assert call_args[1]["timeout"] == 30.0
+
+        # Verify message structure
+        message_json = call_args[1]["json"]
+        assert message_json["channel"] == "#test-channel"
+        assert message_json["text"] == "New PR created: #1"
+        assert "attachments" in message_json
+        assert len(message_json["attachments"]) == 1
+
+        # Verify attachment details
+        attachment = message_json["attachments"][0]
+        assert attachment["color"] == "good"
+
+        # Verify fields in attachment
+        fields = attachment["fields"]
+        assert len(fields) == 2
+        assert fields[0]["title"] == "PR"
+        assert "<https://github.com/test/repo/pull/1|#1>" in fields[0]["value"]
+        assert fields[0]["short"] is True
+        assert fields[1]["title"] == "Summary"
+        assert fields[1]["value"] == "Test PR"
+        assert fields[1]["short"] is False
 
     def test_slack_notify_no_webhook(self, temp_dir, monkeypatch):
         """Test Slack notification fails without webhook."""
@@ -375,12 +416,27 @@ class TestSlackNotify:
         assert result.status == OperationStatus.FAILED
         assert "Slack webhook not configured" in result.message
 
-    def test_slack_notify_default_channel(self, operations):
+    @patch("scripts.post_pr_operations.httpx.Client")
+    def test_slack_notify_default_channel(self, mock_client_class, operations):
         """Test Slack notification with default channel."""
+        # Mock HTTP responses
+        mock_client = Mock()
+        mock_client_class.return_value.__enter__.return_value = mock_client
+
+        mock_post_response = Mock()
+        mock_post_response.raise_for_status = Mock()
+
+        mock_client.post.return_value = mock_post_response
+
         result = operations.slack_notify(pr_url="https://github.com/test/repo/pull/3", pr_number=3, summary="Test PR")
 
         assert result.status == OperationStatus.SUCCESS
         assert result.details["channel"] == "#hcc-ai-assistant"
+
+        # Verify default channel was used in the message
+        call_args = mock_client.post.call_args
+        message_json = call_args[1]["json"]
+        assert message_json["channel"] == "#hcc-ai-assistant"
 
 
 class TestMemoryStore:

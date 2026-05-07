@@ -395,11 +395,17 @@ class PostPROperations:
                 ],
             }
 
-            # Stub: In real implementation, POST to Slack webhook
             if self.dry_run:
                 logger.info(f"[DRY RUN] Would send Slack notification to {channel}: {message}")
             else:
-                logger.info(f"Sent Slack notification to {channel}")
+                with httpx.Client() as client:
+                    response = client.post(
+                        self.slack_webhook,
+                        json=message,
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    logger.info(f"Sent Slack notification to {channel}")
 
             return OperationResult(
                 operation="slack_notify",
