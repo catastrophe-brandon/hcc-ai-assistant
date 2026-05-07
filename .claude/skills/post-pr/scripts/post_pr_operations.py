@@ -14,6 +14,7 @@ All operations are currently stubs for testing. Integrate with real APIs as need
 """
 
 import argparse
+import base64
 import json
 import logging
 import os
@@ -87,8 +88,9 @@ class PostPROperations:
     def __init__(
         self,
         github_token: Optional[str] = None,
-        jira_url: str = "https://issues.redhat.com",
+        jira_url: str = "https://redhat.atlassian.net",
         jira_token: Optional[str] = None,
+        jira_email: Optional[str] = None,
         slack_webhook: Optional[str] = None,
         memory_store_path: str = "/tmp/memory.json",
         dry_run: bool = False,
@@ -97,8 +99,9 @@ class PostPROperations:
 
         Args:
             github_token: GitHub API token (falls back to GITHUB_TOKEN env var)
-            jira_url: JIRA instance URL
+            jira_url: JIRA instance URL (use redhat.atlassian.net for JIRA Cloud)
             jira_token: JIRA API token (falls back to POST_PR_JIRA_TOKEN env var)
+            jira_email: Email for JIRA Basic auth (falls back to POST_PR_JIRA_EMAIL env var)
             slack_webhook: Slack webhook URL (falls back to POST_PR_SLACK_WEBHOOK env var)
             memory_store_path: Path to memory storage file
             dry_run: If True, log actions without executing
@@ -106,6 +109,7 @@ class PostPROperations:
         self.github_token = github_token or os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
         self.jira_url = jira_url
         self.jira_token = jira_token or os.getenv("POST_PR_JIRA_TOKEN")
+        self.jira_email = jira_email or os.getenv("POST_PR_JIRA_EMAIL", "")
         self.slack_webhook = slack_webhook or os.getenv("POST_PR_SLACK_WEBHOOK")
         self.memory_store_path = Path(memory_store_path)
         self.dry_run = dry_run
@@ -254,8 +258,11 @@ class PostPROperations:
             if not self.jira_token:
                 raise ValueError("JIRA token not configured (set POST_PR_JIRA_TOKEN)")
 
+            # Use Basic auth for JIRA Cloud (email:token)
+            auth_string = f"{self.jira_email}:{self.jira_token}"
+            basic_auth = base64.b64encode(auth_string.encode()).decode()
             headers = {
-                "Authorization": f"Bearer {self.jira_token}",
+                "Authorization": f"Basic {basic_auth}",
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             }
@@ -263,15 +270,16 @@ class PostPROperations:
             if self.dry_run:
                 logger.info(f"[DRY RUN] Would transition {ticket_id} to {target_status}")
             else:
-                with httpx.Client() as client:
-                    # Get available transitions
+                with httpx.Client(follow_redirects=True) as client:
+                    # Get available transitions using API v3 (required for JIRA Cloud)
                     get_response = client.get(
-                        f"{self.jira_url}/rest/api/2/issue/{ticket_id}/transitions",
+                        f"{self.jira_url}/rest/api/3/issue/{ticket_id}/transitions",
                         headers=headers,
                         timeout=30.0,
                     )
                     get_response.raise_for_status()
-                    transitions = get_response.json().get("transitions", [])
+                    response_data = get_response.json()
+                    transitions = response_data.get("transitions", [])
 
                     # Find the transition ID for the target status
                     transition_id = None
@@ -293,9 +301,9 @@ class PostPROperations:
                             f"Cannot transition to '{target_status}'. Available transitions: {', '.join(available)}"
                         )
 
-                    # Execute the transition
+                    # Execute the transition using API v3
                     post_response = client.post(
-                        f"{self.jira_url}/rest/api/2/issue/{ticket_id}/transitions",
+                        f"{self.jira_url}/rest/api/3/issue/{ticket_id}/transitions",
                         headers=headers,
                         json={"transition": {"id": transition_id}},
                         timeout=30.0,
@@ -331,22 +339,52 @@ class PostPROperations:
             if not self.jira_token:
                 raise ValueError("JIRA token not configured (set POST_PR_JIRA_TOKEN)")
 
-            comment = f"Pull Request created: {pr_url}\n\nSummary: {summary}"
+            # API v3 uses Atlassian Document Format (ADF) for comments
+            comment_text = f"Pull Request created: {pr_url}\n\nSummary: {summary}"
+            comment_adf = {
+                "body": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"Pull Request created: {pr_url}"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"Summary: {summary}"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
 
+            # Use Basic auth for JIRA Cloud (email:token)
+            auth_string = f"{self.jira_email}:{self.jira_token}"
+            basic_auth = base64.b64encode(auth_string.encode()).decode()
             headers = {
-                "Authorization": f"Bearer {self.jira_token}",
+                "Authorization": f"Basic {basic_auth}",
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             }
 
             if self.dry_run:
-                logger.info(f"[DRY RUN] Would add comment to {ticket_id}: {comment}")
+                logger.info(f"[DRY RUN] Would add comment to {ticket_id}: {comment_text}")
             else:
-                with httpx.Client() as client:
+                with httpx.Client(follow_redirects=True) as client:
                     response = client.post(
-                        f"{self.jira_url}/rest/api/2/issue/{ticket_id}/comment",
+                        f"{self.jira_url}/rest/api/3/issue/{ticket_id}/comment",
                         headers=headers,
-                        json={"body": comment},
+                        json=comment_adf,
                         timeout=30.0,
                     )
                     response.raise_for_status()
@@ -356,7 +394,7 @@ class PostPROperations:
                 operation="jira_add_comment",
                 status=OperationStatus.SUCCESS,
                 message=f"Added comment to {ticket_id}",
-                details={"ticket_id": ticket_id, "comment": comment},
+                details={"ticket_id": ticket_id, "comment": comment_text},
             )
 
         except Exception as e:
@@ -527,8 +565,9 @@ def execute_post_pr_workflow(
     skip_operations = skip_operations or []
     operations = PostPROperations(
         github_token=github_token,
-        jira_url=os.getenv("POST_PR_JIRA_URL", "https://issues.redhat.com"),
+        jira_url=os.getenv("POST_PR_JIRA_URL", "https://redhat.atlassian.net"),
         jira_token=jira_token,
+        jira_email=os.getenv("POST_PR_JIRA_EMAIL", ""),
         slack_webhook=os.getenv("POST_PR_SLACK_WEBHOOK"),
         memory_store_path=os.getenv("POST_PR_MEMORY_STORE", "/tmp/memory.json"),
         dry_run=dry_run,
