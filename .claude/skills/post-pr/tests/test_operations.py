@@ -98,7 +98,10 @@ class TestTaskUpdate:
 
         # Verify reviewers API call
         reviewers_call = mock_client.post.call_args_list[1]
-        assert reviewers_call[0][0] == "https://api.github.com/repos/RedHatInsights/hcc-ai-assistant/pulls/123/requested_reviewers"
+        assert (
+            reviewers_call[0][0]
+            == "https://api.github.com/repos/RedHatInsights/hcc-ai-assistant/pulls/123/requested_reviewers"
+        )
         assert reviewers_call[1]["json"]["reviewers"] == ["user1", "user2"]
 
     def test_task_update_dry_run(self, temp_dir):
@@ -165,7 +168,9 @@ class TestTaskUpdate:
 
     def test_task_update_invalid_url(self, operations):
         """Test GitHub PR update with invalid URL."""
-        result = operations.task_update(pr_url="https://invalid.com/not/a/pr", pr_number=5, ticket_id="TICKET-333", reviewers=None)
+        result = operations.task_update(
+            pr_url="https://invalid.com/not/a/pr", pr_number=5, ticket_id="TICKET-333", reviewers=None
+        )
 
         assert result.status == OperationStatus.FAILED
         assert "Invalid GitHub PR URL" in result.message
@@ -462,9 +467,15 @@ class TestMemoryStore:
 
     def test_memory_store_success(self, operations):
         """Test successful memory storage."""
-        learnings = {"patterns": ["Use async/await"], "gotchas": ["Watch for race conditions"], "decisions": ["Chose FastAPI"]}
+        learnings = {
+            "patterns": ["Use async/await"],
+            "gotchas": ["Watch for race conditions"],
+            "decisions": ["Chose FastAPI"],
+        }
 
-        result = operations.memory_store(pr_url="https://github.com/test/repo/pull/1", ticket_id="TICKET-123", learnings=learnings)
+        result = operations.memory_store(
+            pr_url="https://github.com/test/repo/pull/1", ticket_id="TICKET-123", learnings=learnings
+        )
 
         assert result.status == OperationStatus.SUCCESS
         assert result.operation == "memory_store"
@@ -584,7 +595,11 @@ class TestWorkflowResult:
         ]
 
         result = WorkflowResult(
-            success=False, pr_url="https://github.com/test/repo/pull/1", pr_number=1, ticket_id="TICKET-123", operations=operations
+            success=False,
+            pr_url="https://github.com/test/repo/pull/1",
+            pr_number=1,
+            ticket_id="TICKET-123",
+            operations=operations,
         )
 
         result_dict = result.to_dict()
