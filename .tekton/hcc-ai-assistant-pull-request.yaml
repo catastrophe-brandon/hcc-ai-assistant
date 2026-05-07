@@ -264,10 +264,10 @@ spec:
             echo "Running post-pr skill tests (35 tests)..."
             # Install uv for dependency management
             pip install --quiet uv
-            # Use uv to sync dependencies from lockfile
-            uv sync --frozen
-            # Run tests with uv
-            uv run pytest -v || {
+            # Install dependencies into system Python (read-only source tree)
+            uv pip install --system -r pyproject.toml --all-extras
+            # Run tests directly with pytest
+            pytest -v || {
               echo "Post-PR skill tests failed!"
               exit 1
             }
