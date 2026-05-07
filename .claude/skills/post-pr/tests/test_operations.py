@@ -31,6 +31,7 @@ def operations(temp_dir):
         github_token="test-github-token",
         jira_url="https://test-jira.example.com",
         jira_token="test-jira-token",
+        jira_email="test@example.com",
         slack_webhook="https://hooks.slack.com/test",
         memory_store_path=str(temp_dir / "memory.json"),
         dry_run=False,
@@ -206,11 +207,11 @@ class TestJiraTransitionIssue:
         assert result.details["status"] == "Code Review"
         assert "jira_url" in result.details
 
-        # Verify GET request to fetch available transitions
+        # Verify GET request to fetch available transitions (API v3 with Basic auth)
         mock_client.get.assert_called_once_with(
-            "https://test-jira.example.com/rest/api/2/issue/TICKET-123/transitions",
+            "https://test-jira.example.com/rest/api/3/issue/TICKET-123/transitions",
             headers={
-                "Authorization": "Bearer test-jira-token",
+                "Authorization": "Basic dGVzdEBleGFtcGxlLmNvbTp0ZXN0LWppcmEtdG9rZW4=",
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             },
@@ -219,9 +220,9 @@ class TestJiraTransitionIssue:
 
         # Verify POST request to execute the transition with correct transition ID
         mock_client.post.assert_called_once_with(
-            "https://test-jira.example.com/rest/api/2/issue/TICKET-123/transitions",
+            "https://test-jira.example.com/rest/api/3/issue/TICKET-123/transitions",
             headers={
-                "Authorization": "Bearer test-jira-token",
+                "Authorization": "Basic dGVzdEBleGFtcGxlLmNvbTp0ZXN0LWppcmEtdG9rZW4=",
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             },
@@ -323,16 +324,33 @@ class TestJiraAddComment:
         assert "Test PR summary" in result.details["comment"]
         assert "https://github.com/test/repo/pull/1" in result.details["comment"]
 
-        # Verify POST request with correct comment body
-        expected_comment = "Pull Request created: https://github.com/test/repo/pull/1\n\nSummary: Test PR summary"
+        # Verify POST request with ADF format comment (API v3 with Basic auth)
+        expected_comment_adf = {
+            "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": "Pull Request created: https://github.com/test/repo/pull/1"}
+                        ],
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "Summary: Test PR summary"}],
+                    },
+                ],
+            }
+        }
         mock_client.post.assert_called_once_with(
-            "https://test-jira.example.com/rest/api/2/issue/TICKET-123/comment",
+            "https://test-jira.example.com/rest/api/3/issue/TICKET-123/comment",
             headers={
-                "Authorization": "Bearer test-jira-token",
+                "Authorization": "Basic dGVzdEBleGFtcGxlLmNvbTp0ZXN0LWppcmEtdG9rZW4=",
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             },
-            json={"body": expected_comment},
+            json=expected_comment_adf,
             timeout=30.0,
         )
 

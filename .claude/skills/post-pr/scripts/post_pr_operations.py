@@ -133,7 +133,9 @@ class PostPROperations:
         """
         try:
             if not self.github_token:
-                raise ValueError("GitHub token not configured (set GITHUB_TOKEN env var or pass github_token parameter)")
+                raise ValueError(
+                    "GitHub token not configured (set GITHUB_TOKEN env var or pass github_token parameter)"
+                )
 
             # Parse owner and repo from PR URL
             # Example: https://github.com/RedHatInsights/hcc-ai-assistant/pull/123
@@ -315,7 +317,11 @@ class PostPROperations:
                 operation="jira_transition_issue",
                 status=OperationStatus.SUCCESS,
                 message=f"Transitioned {ticket_id} to {target_status}",
-                details={"ticket_id": ticket_id, "status": target_status, "jira_url": f"{self.jira_url}/browse/{ticket_id}"},
+                details={
+                    "ticket_id": ticket_id,
+                    "status": target_status,
+                    "jira_url": f"{self.jira_url}/browse/{ticket_id}",
+                },
             )
 
         except Exception as e:
@@ -346,25 +352,9 @@ class PostPROperations:
                     "type": "doc",
                     "version": 1,
                     "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"Pull Request created: {pr_url}"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "paragraph",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"Summary: {summary}"
-                                }
-                            ]
-                        }
-                    ]
+                        {"type": "paragraph", "content": [{"type": "text", "text": f"Pull Request created: {pr_url}"}]},
+                        {"type": "paragraph", "content": [{"type": "text", "text": f"Summary: {summary}"}]},
+                    ],
                 }
             }
 
@@ -403,7 +393,9 @@ class PostPROperations:
                 operation="jira_add_comment", status=OperationStatus.FAILED, message=f"JIRA comment failed: {e}"
             )
 
-    def slack_notify(self, pr_url: str, pr_number: int, summary: str, channel: str = "#hcc-ai-assistant") -> OperationResult:
+    def slack_notify(
+        self, pr_url: str, pr_number: int, summary: str, channel: str = "#hcc-ai-assistant"
+    ) -> OperationResult:
         """Send Slack notification for pr_created event.
 
         Args:
@@ -499,7 +491,9 @@ class PostPROperations:
 
         except Exception as e:
             logger.error(f"Failed to store memory: {e}")
-            return OperationResult(operation="memory_store", status=OperationStatus.FAILED, message=f"Memory storage failed: {e}")
+            return OperationResult(
+                operation="memory_store", status=OperationStatus.FAILED, message=f"Memory storage failed: {e}"
+            )
 
     def bot_status_update(self, status: str = "idle") -> OperationResult:
         """Update bot status.
@@ -523,7 +517,10 @@ class PostPROperations:
                 logger.info(f"Updated bot status to {status}")
 
             return OperationResult(
-                operation="bot_status_update", status=OperationStatus.SUCCESS, message=f"Bot status set to {status}", details=status_data
+                operation="bot_status_update",
+                status=OperationStatus.SUCCESS,
+                message=f"Bot status set to {status}",
+                details=status_data,
             )
 
         except Exception as e:
@@ -580,7 +577,9 @@ def execute_post_pr_workflow(
         result = operations.task_update(pr_url, pr_number, ticket_id, reviewers)
         results.append(result)
         if result.status == OperationStatus.FAILED:
-            return WorkflowResult(success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results)
+            return WorkflowResult(
+                success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results
+            )
     else:
         results.append(
             OperationResult(operation="task_update", status=OperationStatus.SKIPPED, message="Skipped by user request")
@@ -591,10 +590,14 @@ def execute_post_pr_workflow(
         result = operations.jira_transition_issue(ticket_id)
         results.append(result)
         if result.status == OperationStatus.FAILED:
-            return WorkflowResult(success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results)
+            return WorkflowResult(
+                success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results
+            )
     else:
         results.append(
-            OperationResult(operation="jira_transition_issue", status=OperationStatus.SKIPPED, message="Skipped by user request")
+            OperationResult(
+                operation="jira_transition_issue", status=OperationStatus.SKIPPED, message="Skipped by user request"
+            )
         )
 
     # Operation 3: Add JIRA comment
@@ -602,10 +605,14 @@ def execute_post_pr_workflow(
         result = operations.jira_add_comment(ticket_id, pr_url, summary)
         results.append(result)
         if result.status == OperationStatus.FAILED:
-            return WorkflowResult(success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results)
+            return WorkflowResult(
+                success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results
+            )
     else:
         results.append(
-            OperationResult(operation="jira_add_comment", status=OperationStatus.SKIPPED, message="Skipped by user request")
+            OperationResult(
+                operation="jira_add_comment", status=OperationStatus.SKIPPED, message="Skipped by user request"
+            )
         )
 
     # Operation 4: Slack notification
@@ -613,7 +620,9 @@ def execute_post_pr_workflow(
         result = operations.slack_notify(pr_url, pr_number, summary, slack_channel)
         results.append(result)
         if result.status == OperationStatus.FAILED:
-            return WorkflowResult(success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results)
+            return WorkflowResult(
+                success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results
+            )
     else:
         results.append(
             OperationResult(operation="slack_notify", status=OperationStatus.SKIPPED, message="Skipped by user request")
@@ -625,7 +634,9 @@ def execute_post_pr_workflow(
         result = operations.memory_store(pr_url, ticket_id, learnings)
         results.append(result)
         if result.status == OperationStatus.FAILED:
-            return WorkflowResult(success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results)
+            return WorkflowResult(
+                success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results
+            )
     else:
         results.append(
             OperationResult(operation="memory_store", status=OperationStatus.SKIPPED, message="Skipped by user request")
@@ -636,10 +647,14 @@ def execute_post_pr_workflow(
         result = operations.bot_status_update("idle")
         results.append(result)
         if result.status == OperationStatus.FAILED:
-            return WorkflowResult(success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results)
+            return WorkflowResult(
+                success=False, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results
+            )
     else:
         results.append(
-            OperationResult(operation="bot_status_update", status=OperationStatus.SKIPPED, message="Skipped by user request")
+            OperationResult(
+                operation="bot_status_update", status=OperationStatus.SKIPPED, message="Skipped by user request"
+            )
         )
 
     return WorkflowResult(success=True, pr_url=pr_url, pr_number=pr_number, ticket_id=ticket_id, operations=results)
@@ -656,7 +671,9 @@ def main():
     parser.add_argument("--jira-token", help="JIRA API token (falls back to POST_PR_JIRA_TOKEN env var)")
     parser.add_argument("--slack-channel", default="#hcc-ai-assistant", help="Slack channel for notifications")
     parser.add_argument("--reviewers", help="Comma-separated list of GitHub usernames to request as reviewers")
-    parser.add_argument("--skip", help="Comma-separated list of operations to skip (github, jira, slack, memory, status)")
+    parser.add_argument(
+        "--skip", help="Comma-separated list of operations to skip (github, jira, slack, memory, status)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without executing")
     parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable format")
 
@@ -681,17 +698,19 @@ def main():
     if args.json:
         print(json.dumps(result.to_dict(), indent=2))
     else:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Post-PR Workflow: {'SUCCESS' if result.success else 'FAILED'}")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"PR: {result.pr_url} (#{result.pr_number})")
         print(f"Ticket: {result.ticket_id}")
         print(f"Timestamp: {result.timestamp}")
         print("\nOperations:")
         for op in result.operations:
-            status_icon = "✓" if op.status == OperationStatus.SUCCESS else "✗" if op.status == OperationStatus.FAILED else "-"
+            status_icon = (
+                "✓" if op.status == OperationStatus.SUCCESS else "✗" if op.status == OperationStatus.FAILED else "-"
+            )
             print(f"  {status_icon} {op.operation}: {op.message}")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
     sys.exit(0 if result.success else 1)
 
