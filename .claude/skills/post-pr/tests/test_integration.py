@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -35,10 +36,35 @@ def env_vars(temp_dir):
     os.environ.update(original_env)
 
 
+@pytest.fixture
+def mock_github_api():
+    """Mock GitHub API responses."""
+    with patch("scripts.post_pr_operations.httpx.Client") as mock_client_class:
+        mock_client = Mock()
+        mock_client_class.return_value.__enter__.return_value = mock_client
+
+        # Mock successful responses
+        mock_post_response = Mock()
+        mock_post_response.raise_for_status = Mock()
+
+        mock_get_response = Mock()
+        mock_get_response.raise_for_status = Mock()
+        mock_get_response.json.return_value = {"body": "Existing PR description"}
+
+        mock_patch_response = Mock()
+        mock_patch_response.raise_for_status = Mock()
+
+        mock_client.post.return_value = mock_post_response
+        mock_client.get.return_value = mock_get_response
+        mock_client.patch.return_value = mock_patch_response
+
+        yield mock_client
+
+
 class TestFullWorkflow:
     """Test complete post-PR workflow."""
 
-    def test_successful_workflow(self, env_vars, temp_dir):
+    def test_successful_workflow(self, env_vars, temp_dir, mock_github_api):
         """Test successful execution of all operations."""
         result = execute_post_pr_workflow(
             pr_url="https://github.com/RedHatInsights/hcc-ai-assistant/pull/123",
@@ -71,7 +97,7 @@ class TestFullWorkflow:
         actual_operations = [op.operation for op in result.operations]
         assert actual_operations == expected_operations
 
-    def test_workflow_with_skip_operations(self, env_vars):
+    def test_workflow_with_skip_operations(self, env_vars, mock_github_api):
         """Test workflow with some operations skipped."""
         result = execute_post_pr_workflow(
             pr_url="https://github.com/RedHatInsights/hcc-ai-assistant/pull/124",
@@ -95,7 +121,7 @@ class TestFullWorkflow:
             if op.operation not in ["slack_notify", "memory_store"]:
                 assert op.status == OperationStatus.SUCCESS
 
-    def test_workflow_dry_run(self, env_vars, temp_dir):
+    def test_workflow_dry_run(self, env_vars, temp_dir, mock_github_api):
         """Test workflow in dry-run mode."""
         result = execute_post_pr_workflow(
             pr_url="https://github.com/RedHatInsights/hcc-ai-assistant/pull/125",
@@ -143,7 +169,7 @@ class TestFullWorkflow:
         # Verify workflow stopped after failure (only 1 operation ran)
         assert len(result.operations) == 1
 
-    def test_workflow_result_serialization(self, env_vars):
+    def test_workflow_result_serialization(self, env_vars, mock_github_api):
         """Test that workflow result can be serialized to JSON."""
         result = execute_post_pr_workflow(
             pr_url="https://github.com/RedHatInsights/hcc-ai-assistant/pull/127",
@@ -167,7 +193,7 @@ class TestFullWorkflow:
 class TestWorkflowEdgeCases:
     """Test edge cases and error scenarios."""
 
-    def test_workflow_with_minimal_inputs(self, env_vars):
+    def test_workflow_with_minimal_inputs(self, env_vars, mock_github_api):
         """Test workflow with only required inputs."""
         result = execute_post_pr_workflow(
             pr_url="https://github.com/RedHatInsights/hcc-ai-assistant/pull/128",
@@ -181,7 +207,7 @@ class TestWorkflowEdgeCases:
         slack_op = next(op for op in result.operations if op.operation == "slack_notify")
         assert slack_op.details["channel"] == "#hcc-ai-assistant"
 
-    def test_workflow_with_long_summary(self, env_vars):
+    def test_workflow_with_long_summary(self, env_vars, mock_github_api):
         """Test workflow with very long PR summary."""
         long_summary = "A" * 1000  # 1000 character summary
 
@@ -198,7 +224,7 @@ class TestWorkflowEdgeCases:
         jira_comment_op = next(op for op in result.operations if op.operation == "jira_add_comment")
         assert long_summary in jira_comment_op.details["comment"]
 
-    def test_workflow_with_special_characters(self, env_vars):
+    def test_workflow_with_special_characters(self, env_vars, mock_github_api):
         """Test workflow with special characters in summary."""
         special_summary = 'Test "quotes" & <tags> and \\backslashes\\'
 
@@ -216,7 +242,7 @@ class TestWorkflowEdgeCases:
         assert task_op.status == OperationStatus.SUCCESS
         assert task_op.details["jira_ticket"] == "TICKET-463"
 
-    def test_workflow_with_reviewers(self, env_vars):
+    def test_workflow_with_reviewers(self, env_vars, mock_github_api):
         """Test workflow with reviewers specified."""
         result = execute_post_pr_workflow(
             pr_url="https://github.com/RedHatInsights/hcc-ai-assistant/pull/131",
@@ -235,7 +261,7 @@ class TestWorkflowEdgeCases:
 class TestWorkflowPersistence:
     """Test that workflow operations persist data correctly."""
 
-    def test_github_pr_updates(self, env_vars):
+    def test_github_pr_updates(self, env_vars, mock_github_api):
         """Test that GitHub PR updates include correct details."""
         result1 = execute_post_pr_workflow(
             pr_url="https://github.com/RedHatInsights/hcc-ai-assistant/pull/132",
@@ -270,7 +296,7 @@ class TestWorkflowPersistence:
         assert task_op2.details["pr_number"] == 133
         assert task_op2.details["reviewers_requested"] == ["user2", "user3"]
 
-    def test_memory_accumulation(self, env_vars, temp_dir):
+    def test_memory_accumulation(self, env_vars, temp_dir, mock_github_api):
         """Test that memories accumulate over multiple executions."""
         # Execute workflow 3 times
         for i in range(3):
@@ -294,7 +320,7 @@ class TestWorkflowPersistence:
                 assert memory["ticket_id"] == f"TICKET-{467 + i}"
                 assert memory["pr_url"] == f"https://github.com/RedHatInsights/hcc-ai-assistant/pull/{134 + i}"
 
-    def test_bot_status_overwrite(self, env_vars):
+    def test_bot_status_overwrite(self, env_vars, mock_github_api):
         """Test that bot status is overwritten on each execution."""
         result1 = execute_post_pr_workflow(
             pr_url="https://github.com/RedHatInsights/hcc-ai-assistant/pull/137",

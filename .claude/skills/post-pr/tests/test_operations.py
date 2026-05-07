@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -40,8 +40,28 @@ def operations(temp_dir):
 class TestTaskUpdate:
     """Test task_update operation (GitHub PR updates)."""
 
-    def test_task_update_success(self, operations):
+    @patch("scripts.post_pr_operations.httpx.Client")
+    def test_task_update_success(self, mock_client_class, operations):
         """Test successful GitHub PR update."""
+        # Mock HTTP responses
+        mock_client = Mock()
+        mock_client_class.return_value.__enter__.return_value = mock_client
+
+        # Mock successful responses
+        mock_post_response = Mock()
+        mock_post_response.raise_for_status = Mock()
+
+        mock_get_response = Mock()
+        mock_get_response.raise_for_status = Mock()
+        mock_get_response.json.return_value = {"body": "Existing PR description"}
+
+        mock_patch_response = Mock()
+        mock_patch_response.raise_for_status = Mock()
+
+        mock_client.post.return_value = mock_post_response
+        mock_client.get.return_value = mock_get_response
+        mock_client.patch.return_value = mock_patch_response
+
         result = operations.task_update(
             pr_url="https://github.com/RedHatInsights/hcc-ai-assistant/pull/123",
             pr_number=123,
@@ -59,6 +79,11 @@ class TestTaskUpdate:
         assert result.details["reviewers_requested"] == ["user1", "user2"]
         assert "code-review" in result.details["labels_added"]
 
+        # Verify API calls were made
+        assert mock_client.post.call_count == 2  # labels + reviewers
+        assert mock_client.get.call_count == 1  # get PR
+        assert mock_client.patch.call_count == 1  # update PR
+
     def test_task_update_dry_run(self, temp_dir):
         """Test GitHub PR update in dry-run mode."""
         operations = PostPROperations(
@@ -73,14 +98,38 @@ class TestTaskUpdate:
         assert result.details["owner"] == "test"
         assert result.details["repo"] == "repo"
 
-    def test_task_update_no_reviewers(self, operations):
+    @patch("scripts.post_pr_operations.httpx.Client")
+    def test_task_update_no_reviewers(self, mock_client_class, operations):
         """Test GitHub PR update without reviewers."""
+        # Mock HTTP responses
+        mock_client = Mock()
+        mock_client_class.return_value.__enter__.return_value = mock_client
+
+        mock_post_response = Mock()
+        mock_post_response.raise_for_status = Mock()
+
+        mock_get_response = Mock()
+        mock_get_response.raise_for_status = Mock()
+        mock_get_response.json.return_value = {"body": "Existing PR description"}
+
+        mock_patch_response = Mock()
+        mock_patch_response.raise_for_status = Mock()
+
+        mock_client.post.return_value = mock_post_response
+        mock_client.get.return_value = mock_get_response
+        mock_client.patch.return_value = mock_patch_response
+
         result = operations.task_update(
             pr_url="https://github.com/test/repo/pull/3", pr_number=3, ticket_id="TICKET-111", reviewers=None
         )
 
         assert result.status == OperationStatus.SUCCESS
         assert result.details["reviewers_requested"] == []
+
+        # Verify API calls: labels + get PR + patch PR (no reviewers call)
+        assert mock_client.post.call_count == 1  # labels only
+        assert mock_client.get.call_count == 1  # get PR
+        assert mock_client.patch.call_count == 1  # update PR
 
     def test_task_update_no_github_token(self, temp_dir, monkeypatch):
         """Test GitHub PR update fails without token."""

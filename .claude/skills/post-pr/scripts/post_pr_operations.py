@@ -24,6 +24,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import httpx
+
 logging.basicConfig(level=logging.INFO, format="[post-pr] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -143,15 +145,26 @@ class PostPROperations:
                 reviewers = []
 
             updates = []
+            headers = {
+                "Authorization": f"token {self.github_token}",
+                "Accept": "application/vnd.github.v3+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
 
-            # Stub: In real implementation, use GitHub API
             # 1. Add labels
             labels_to_add = ["code-review", "awaiting-review"]
             if self.dry_run:
                 logger.info(f"[DRY RUN] Would add labels to PR #{pr_number}: {labels_to_add}")
             else:
-                # POST /repos/{owner}/{repo}/issues/{pr_number}/labels
-                logger.info(f"Added labels to PR #{pr_number}: {labels_to_add}")
+                with httpx.Client() as client:
+                    response = client.post(
+                        f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/labels",
+                        headers=headers,
+                        json={"labels": labels_to_add},
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    logger.info(f"Added labels to PR #{pr_number}: {labels_to_add}")
             updates.append(f"Added labels: {', '.join(labels_to_add)}")
 
             # 2. Update PR description with JIRA link
@@ -161,9 +174,32 @@ class PostPROperations:
             if self.dry_run:
                 logger.info(f"[DRY RUN] Would update PR description with JIRA link: {jira_link}")
             else:
-                # PATCH /repos/{owner}/{repo}/pulls/{pr_number}
-                # body = current_body + jira_section
-                logger.info(f"Updated PR description with JIRA link: {jira_link}")
+                with httpx.Client() as client:
+                    # First, get current PR description
+                    get_response = client.get(
+                        f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}",
+                        headers=headers,
+                        timeout=30.0,
+                    )
+                    get_response.raise_for_status()
+                    pr_data = get_response.json()
+                    current_body = pr_data.get("body") or ""
+
+                    # Check if JIRA link already exists
+                    if ticket_id not in current_body:
+                        updated_body = current_body + jira_section
+
+                        # Update PR description
+                        patch_response = client.patch(
+                            f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}",
+                            headers=headers,
+                            json={"body": updated_body},
+                            timeout=30.0,
+                        )
+                        patch_response.raise_for_status()
+                        logger.info(f"Updated PR description with JIRA link: {jira_link}")
+                    else:
+                        logger.info(f"JIRA link already exists in PR description")
             updates.append(f"Added JIRA link to description")
 
             # 3. Request reviewers
@@ -171,8 +207,15 @@ class PostPROperations:
                 if self.dry_run:
                     logger.info(f"[DRY RUN] Would request reviewers for PR #{pr_number}: {reviewers}")
                 else:
-                    # POST /repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers
-                    logger.info(f"Requested reviewers for PR #{pr_number}: {reviewers}")
+                    with httpx.Client() as client:
+                        response = client.post(
+                            f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
+                            headers=headers,
+                            json={"reviewers": reviewers},
+                            timeout=30.0,
+                        )
+                        response.raise_for_status()
+                        logger.info(f"Requested reviewers for PR #{pr_number}: {reviewers}")
                 updates.append(f"Requested reviewers: {', '.join(reviewers)}")
 
             return OperationResult(
