@@ -3,14 +3,14 @@
 Post-PR workflow operations.
 
 Consolidates post-PR-creation bookkeeping into a single script:
-1. task_update - set status pr_open, pr_number, pr_url, metadata
-2. jira_transition_issue - move to "Code Review"
-3. jira_add_comment - post PR link and summary
-4. slack_notify - notify team of pr_created
-5. memory_store - save learning from implementation
-6. bot_status_update - set idle
+1. task_update - update GitHub PR (labels, JIRA link, reviewers)
+2. jira_transition_issue - transition JIRA issue to "Code Review"
+3. jira_add_comment - add PR link and summary as JIRA comment
+4. slack_notify - send notification to Slack webhook
+5. memory_store - save implementation learnings to JSON file
+6. bot_status_update - update bot status to idle
 
-All operations are currently stubs for testing. Integrate with real APIs as needed.
+Fully integrated with GitHub REST API, JIRA Cloud API v3, and Slack webhooks.
 """
 
 import argparse
@@ -472,7 +472,7 @@ class PostPROperations:
             if self.dry_run:
                 logger.info(f"[DRY RUN] Would store memory: {memory_entry}")
             else:
-                # Stub: Append to JSON file
+                # Append to JSON file (accumulative)
                 memories = []
                 if self.memory_store_path.exists():
                     with open(self.memory_store_path, "r") as f:
@@ -510,7 +510,7 @@ class PostPROperations:
             if self.dry_run:
                 logger.info(f"[DRY RUN] Would update bot status to {status}")
             else:
-                # Stub: Write to status file
+                # Write to status file (overwrites previous status)
                 status_file = Path("/tmp/bot_status.json")
                 with open(status_file, "w") as f:
                     json.dump(status_data, f, indent=2)
