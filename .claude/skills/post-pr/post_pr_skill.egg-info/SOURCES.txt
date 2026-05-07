@@ -1,0 +1,10 @@
+README.md
+SKILL.md
+pyproject.toml
+post_pr_skill.egg-info/PKG-INFO
+post_pr_skill.egg-info/SOURCES.txt
+post_pr_skill.egg-info/dependency_links.txt
+post_pr_skill.egg-info/requires.txt
+post_pr_skill.egg-info/top_level.txt
+tests/test_integration.py
+tests/test_operations.py
