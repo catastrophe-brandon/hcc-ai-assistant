@@ -265,9 +265,9 @@ spec:
             # Copy skill to writable workspace
             cp -r /var/workdir/source/.claude/skills/post-pr /var/workdir/post-pr-test
             cd /var/workdir/post-pr-test
-            # Install dependencies with uv
+            # Install dependencies with uv (including dev extras for pytest)
             pip install --quiet uv
-            uv sync --frozen
+            uv sync --frozen --all-extras
             # Run tests
             uv run pytest -v || {
               echo "Post-PR skill tests failed!"
