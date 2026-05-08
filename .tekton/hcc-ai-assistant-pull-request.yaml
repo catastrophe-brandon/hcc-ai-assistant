@@ -285,6 +285,38 @@ spec:
           volumeMounts:
           - mountPath: /var/workdir
             name: workdir
+          resources:
+            requests:
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
+        - name: test-push-and-pr-skill
+          image: registry.access.redhat.com/ubi9/python-312:latest
+          workingDir: /var/workdir
+          script: |
+            #!/bin/bash
+            set -e
+            echo "Running push-and-pr skill tests (62 tests)..."
+            # Copy skill to writable workspace
+            cp -r /var/workdir/source/.claude/skills/push-and-pr /var/workdir/push-and-pr-test
+            cd /var/workdir/push-and-pr-test
+            # Install dependencies with uv (including dev extras for pytest)
+            pip install --quiet uv
+            uv sync --frozen --all-extras
+            # Run tests
+            uv run pytest -v || {
+              echo "Push-and-PR skill tests failed!"
+              exit 1
+            }
+            echo "Push-and-PR skill tests passed!"
+          volumeMounts:
+          - mountPath: /var/workdir
+            name: workdir
+          resources:
+            requests:
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
         volumes:
         - name: workdir
           emptyDir: {}
